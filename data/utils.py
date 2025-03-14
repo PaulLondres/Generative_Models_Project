@@ -117,25 +117,33 @@ def save_image_pillow(image_array, save_path):
 
 # if main file
 if __name__ == "__main__":
-    image_size = 256
+    image_size = 128
     device = "cuda"
     sigma = 2       # Adjust for medical relevance
     pdf = lambda x: torch.exp(torch.Tensor([-0.5 * (x/sigma)**2]))
     kernel2 = torch.Tensor([pdf(-4), pdf(-3), pdf(-2), pdf(-1), pdf(0), pdf(1), pdf(2), pdf(3), pdf(4)]).to(device)
     pdf = lambda x: torch.exp(torch.Tensor([-0.5 * (x/sigma)**2]))
     kernel1 = torch.Tensor([pdf(-4), pdf(-3), pdf(-2), pdf(-1), pdf(0), pdf(1), pdf(2), pdf(3), pdf(4)]).to(device)
-    deblur = Deblurring2D(kernel1 / kernel1.sum(), kernel2 / kernel2.sum(), 1, 256, device)
+    deblur = Deblurring2D(kernel1 / kernel1.sum(), kernel2 / kernel2.sum(), 1, image_size, device)
+
+    image_size_ = 64
+    deblur_64 = Deblurring2D(kernel1 / kernel1.sum(), kernel2 / kernel2.sum(), 1, image_size_, device)
 
     # downsample images with torch
-    downsample = torch.nn.AvgPool2d(4)
+    downsample_128 = torch.nn.AvgPool2d(8)
+    downsample_64 = torch.nn.AvgPool2d(16)
     # open images
     files = os.listdir("images")
 
     for file in tqdm.tqdm(files[:10000]):
         image = read_image_pillow(f"images/{file}")
         image = torch.Tensor(image).to("cuda").unsqueeze(0)
-        downsampled_image = downsample(image)
-        save_image_pillow(downsampled_image.squeeze(0).cpu().numpy().astype(np.uint8), f"downsampled_images/{file}")
+        downsampled_image = downsample_128(image)
+        downsampled_image_64 = downsample_64(image)
+        save_image_pillow(downsampled_image.squeeze(0).cpu().numpy().astype(np.uint8), f"downsampled_images_128/{file}")
+        save_image_pillow(downsampled_image_64.squeeze(0).cpu().numpy().astype(np.uint8), f"downsampled_images_64/{file}")
         blurred_image = deblur.apply_H(downsampled_image)
-        save_image_pillow(convert_to_uint8(blurred_image.squeeze(0).cpu().numpy()), f"blurred_images/{file}")
+        save_image_pillow(convert_to_uint8(blurred_image.squeeze(0).cpu().numpy()), f"blurred_images_128/{file}")
+        blurred_image_64 = deblur_64.apply_H(downsampled_image_64)
+        save_image_pillow(convert_to_uint8(blurred_image_64.squeeze(0).cpu().numpy()), f"blurred_images_64/{file}")
 
