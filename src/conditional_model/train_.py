@@ -9,9 +9,11 @@ from diffusers.utils import make_image_grid
 import os
 from PIL import Image
 import torch.nn.functional as F
+import torch.nn as nn
 from tqdm import tqdm
 from accelerate import Accelerator, notebook_launcher
 import numpy as np
+from utils import DDPMPipeline_
 
 @dataclass
 class TrainingConfig:
@@ -25,7 +27,7 @@ class TrainingConfig:
     save_image_epochs = 1
     save_model_epochs = 2
     mixed_precision = "fp16"  # `no` for float32, `fp16` for automatic mixed precision
-    output_dir = f"ddpm-cond-{image_size}"  # the model name locally and on the HF Hub
+    output_dir = f"ddpm-cond-cnn-{image_size}"  # the model name locally and on the HF Hub
     overwrite_output_dir = True  # overwrite the old model when re-running the notebook
     seed = 0
 
@@ -37,11 +39,11 @@ dataset = BlurredDataset(DATA_DIR, image_size=config.image_size)
 train_dataset, val_dataset, test_dataset = torch.utils.data.random_split(dataset, [int(len(dataset)*0.8), int(len(dataset)*0.1), int(len(dataset)*0.1)])
 train_dataloader = torch.utils.data.DataLoader(dataset, batch_size=config.train_batch_size, shuffle=True)
 
-model = UNet2DModel(
+unet = UNet2DModel(
 
     sample_size=config.image_size,  # the target image resolution
 
-    in_channels=2,  # the number of input channels, 3 for RGB images
+    in_channels=1,  # the number of input channels, 3 for RGB images
 
     out_channels=1,  # the number of output channels
 
@@ -65,11 +67,55 @@ model = UNet2DModel(
 
 )
 
+class Encoder(nn.Module):
+    def __init__(self, output_channels=1):  # Fewer feature maps
+        super().__init__()
+        self.encoder = nn.Sequential(
+            nn.Conv2d(2, 8, kernel_size=3, stride=1, padding=1),  # 64x64, only 4 channels
+            nn.ReLU(),
+            nn.Conv2d(8, 16, kernel_size=3, stride=1, padding=1),  # 64x64, only 4 channels
+            nn.ReLU(),
+            nn.Conv2d(16, output_channels, kernel_size=3, stride=1, padding=1),  # 64x64, stays at 4 channels
+            nn.ReLU()
+        )
+
+    def forward(self, x):
+        return self.encoder(x)  # Output: (batch, output_channels, 64, 64)
+
+
+class UNetWithScaledBlurConditioning(nn.Module):
+    def __init__(self, unet, feature_extractor):
+        super().__init__()
+        self.unet = unet  # Original UNet2DModel from diffusers
+        self.feature_extractor = feature_extractor
+        self.scale_factor = nn.Parameter(torch.tensor(1.0))  # Learnable weight
+        self.config = unet.config  # Copy the original UNet config
+
+    def forward(self, image, t, return_dict=True):
+        # mixing the image with the feature map
+        image = self.feature_extractor(image)
+
+        return self.unet(image, t, return_dict=return_dict)
+        
+    @property
+    def device(self):
+        """Delegate device access to original UNet."""
+        return self.unet.device
+    
+    @property
+    def dtype(self):
+        """Delegate dtype access to original UNet."""
+        return self.unet.dtype
+    
+feature_extractor = Encoder(output_channels=1)
+model = UNetWithScaledBlurConditioning(unet, feature_extractor)
+
+
 sample_image = dataset[0].unsqueeze(0)
 
 print("Input shape:", sample_image.shape)
 
-print("Output shape:", model(sample_image, timestep=0).sample.shape)
+print("Output shape:", model(sample_image, 0).sample.shape)
 
 noise_scheduler = DDPMScheduler(num_train_timesteps=100, beta_schedule="squaredcos_cap_v2", prediction_type="epsilon")
 
@@ -115,15 +161,10 @@ def evaluate(config, epoch, pipeline):
 
         num_inference_steps=100,
 
-        return_dict=False,
+        return_dict=True,
 
-        output_type="np_array"
-    )
-
-    images = images[0][:, :, :, 0]
-    # add extra dimension for channel
-    images = np.expand_dims(images, axis=3)
-    images = pipeline.numpy_to_pil(images)
+        output_type="pil"
+    ).images
 
     # Make a grid out of the images
 
@@ -211,28 +252,13 @@ def train_loop(config, model, noise_scheduler, optimizer, train_dataloader, lr_s
             # (this is the forward diffusion process)
 
             noisy_images = noise_scheduler.add_noise(original_image, noise, timesteps)
-
-            # Compute per-image mean and std for noisy images
-            mean_noisy = noisy_images.mean(dim=[1, 2, 3], keepdim=True)
-            std_noisy = noisy_images.std(dim=[1, 2, 3], keepdim=True)
-
-            # Compute per-image mean and std for blurred images
-            mean_blurred = blurred_image.mean(dim=[1, 2, 3], keepdim=True)
-            std_blurred = blurred_image.std(dim=[1, 2, 3], keepdim=True)
-
-            # Normalize the blurred image first (zero-mean, unit variance) per image
-            normalized_blurred = (blurred_image - mean_blurred) / (std_blurred + 1e-6)
-
-            # Now rescale to match the noisy image’s mean/std (per image)
-            # blurred_image = normalized_blurred * std_noisy + mean_noisy
-
             noisy_images = torch.cat([noisy_images, blurred_image], dim=1)
+
             with accelerator.accumulate(model):
 
                 # Predict the noise residual
 
                 noise_pred = model(noisy_images, timesteps, return_dict=False)[0]
-
                 loss = F.mse_loss(noise_pred, noise)
 
                 accelerator.backward(loss)
@@ -260,8 +286,8 @@ def train_loop(config, model, noise_scheduler, optimizer, train_dataloader, lr_s
         # After each epoch you optionally sample some demo images with evaluate() and save the model
 
         if accelerator.is_main_process:
-
-            pipeline = DDPMPipeline(unet=accelerator.unwrap_model(model), scheduler=noise_scheduler)
+            
+            pipeline = DDPMPipeline_(unet=accelerator.unwrap_model(model), scheduler=noise_scheduler, dataset=train_dataset)
 
             if (epoch + 1) % config.save_image_epochs == 0 or epoch == config.num_epochs - 1:
 
@@ -269,7 +295,8 @@ def train_loop(config, model, noise_scheduler, optimizer, train_dataloader, lr_s
 
             if (epoch + 1) % config.save_model_epochs == 0 or epoch == config.num_epochs - 1:
 
-                pipeline.save_pretrained(config.output_dir)
+                torch.save(model.state_dict(), "model_weights.pth")  # ✅ Saves the model weights
+
 
 
 args = (config, model, noise_scheduler, optimizer, train_dataloader, lr_scheduler)
