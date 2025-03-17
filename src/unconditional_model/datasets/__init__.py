@@ -184,7 +184,26 @@ def get_dataset(args, config):
             )
             test_dataset = dataset
     else:
-        dataset, test_dataset = None, None
+        if args.custom_dataset_path is not None:
+            dataset = torchvision.datasets.ImageFolder(
+                root=args.custom_dataset_path,
+                transform=transforms.Compose([
+                    transforms.Resize(config.data.image_size),
+                    transforms.ToTensor(),
+                ])
+            )
+
+            test_dataset = torchvision.datasets.ImageFolder(
+                root=args.custom_dataset_path,
+                transform=transforms.Compose([
+                    transforms.Resize(config.data.image_size),
+                    transforms.ToTensor(),
+                ])
+            )
+
+        else:
+            raise ValueError(f"You must either use a supported dataset or indicate a custom dataset path")
+            dataset, test_dataset = None, None
 
     return dataset, test_dataset
 

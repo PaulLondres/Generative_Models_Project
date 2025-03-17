@@ -23,6 +23,10 @@ def parse_args_and_config():
     parser.add_argument(
         "--pt_weights", type=str, required=False, default=None, help="Path to the pretrained weights, if a specific one is needed"
     )
+    parser.add_argument(
+        "--custom_dataset_path", type=str, required=False, default=None,
+        help="Path to folder containing a custom dataset (not supported by DDRM implementation), must contain a class subfolder(s) with the images inside"
+    )
     parser.add_argument("--seed", type=int, default=1234, help="Random seed")
     parser.add_argument(
         "--exp", type=str, default="exp", help="Path for saving running related data."
