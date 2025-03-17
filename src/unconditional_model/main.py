@@ -20,6 +20,9 @@ def parse_args_and_config():
     parser.add_argument(
         "--config", type=str, required=True, help="Path to the config file"
     )
+    parser.add_argument(
+        "--pt_weights", type=str, required=False, default=None, help="Path to the pretrained weights, if a specific one is needed"
+    )
     parser.add_argument("--seed", type=int, default=1234, help="Random seed")
     parser.add_argument(
         "--exp", type=str, default="exp", help="Path for saving running related data."

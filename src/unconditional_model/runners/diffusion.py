@@ -127,8 +127,7 @@ class Diffusion(object):
                 if not os.path.exists(ckpt):
                     download('https://openaipublic.blob.core.windows.net/diffusion/jul-2021/%dx%d_diffusion_uncond.pt' % (self.config.data.image_size, self.config.data.image_size), ckpt)
             else:
-                #ckpt = os.path.join(self.args.exp, "logs/imagenet/256x256_diffusion_uncond.pt")
-                ckpt = "/home/plondres/Documents/MVA/Generative_Models/Project_GMI/base_diffusion_model/improved-diffusion/scripts/model105000.pt"
+                ckpt = os.path.join(self.args.exp, "logs/imagenet/256x256_diffusion_uncond.pt") if self.args.pt_weights is None else self.args.pt_weights
                 if not os.path.exists(ckpt):
                     download('https://openaipublic.blob.core.windows.net/diffusion/jul-2021/256x256_diffusion_uncond.pt', ckpt)
                 
