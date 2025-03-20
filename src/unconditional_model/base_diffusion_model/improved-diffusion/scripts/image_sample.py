@@ -9,7 +9,12 @@ import os
 import numpy as np
 import torch as th
 import torch.distributed as dist
+import sys
+import os
 
+from PIL.ImageOps import grayscale
+
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 from improved_diffusion import dist_util, logger
 from improved_diffusion.script_util import (
     NUM_CLASSES,
@@ -52,9 +57,10 @@ def main():
         sample_fn = (
             diffusion.p_sample_loop if not args.use_ddim else diffusion.ddim_sample_loop
         )
+        out_channels = 3 if not args.grayscale else 1
         sample = sample_fn(
             model,
-            (args.batch_size, 3, args.image_size, args.image_size),
+            (args.batch_size, out_channels, args.image_size, args.image_size),
             clip_denoised=args.clip_denoised,
             model_kwargs=model_kwargs,
         )
@@ -98,6 +104,7 @@ def create_argparser():
         batch_size=2,
         use_ddim=False,
         model_path="",
+        grayscale=False,
     )
     defaults.update(model_and_diffusion_defaults())
     parser = argparse.ArgumentParser()

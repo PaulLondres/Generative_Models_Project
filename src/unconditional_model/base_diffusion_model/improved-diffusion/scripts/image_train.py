@@ -4,6 +4,10 @@ Train a diffusion model on images.
 
 import argparse
 
+import sys
+import os
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
+
 from improved_diffusion import dist_util, logger
 from improved_diffusion.image_datasets import load_data
 from improved_diffusion.resample import create_named_schedule_sampler
@@ -59,6 +63,7 @@ def main():
 
 def create_argparser():
     defaults = dict(
+        grayscale=False,
         data_dir="",
         schedule_sampler="uniform",
         lr=1e-4,
@@ -68,7 +73,7 @@ def create_argparser():
         microbatch=-1,  # -1 disables microbatches
         ema_rate="0.9999",  # comma-separated list of EMA values
         log_interval=10,
-        save_interval=10000,
+        save_interval=100,
         resume_checkpoint="",
         use_fp16=False,
         fp16_scale_growth=1e-3,
