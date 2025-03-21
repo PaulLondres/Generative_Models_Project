@@ -26,6 +26,17 @@ class Crop(object):
             self.x1, self.x2, self.y1, self.y2
         )
 
+class FlexibleToTensor:
+    def __init__(self, grayscale=False):
+        self.grayscale = grayscale
+
+    def __call__(self, img):
+        if self.grayscale:
+            img = img.convert("L")
+        else:
+            img = img.convert("RGB")
+        return transforms.ToTensor()(img)
+
 def center_crop_arr(pil_image, image_size = 256):
     # Imported from openai/guided-diffusion
     while min(*pil_image.size) >= 2 * image_size:
@@ -185,11 +196,12 @@ def get_dataset(args, config):
             test_dataset = dataset
     else:
         if args.custom_dataset_path is not None:
+            grayscale = (config.data.channels == 1)
             dataset = torchvision.datasets.ImageFolder(
                 root=args.custom_dataset_path,
                 transform=transforms.Compose([
                     transforms.Resize(config.data.image_size),
-                    transforms.ToTensor(),
+                    FlexibleToTensor(grayscale=grayscale),
                 ])
             )
 
@@ -197,7 +209,7 @@ def get_dataset(args, config):
                 root=args.custom_dataset_path,
                 transform=transforms.Compose([
                     transforms.Resize(config.data.image_size),
-                    transforms.ToTensor(),
+                    FlexibleToTensor(grayscale=grayscale),
                 ])
             )
 
