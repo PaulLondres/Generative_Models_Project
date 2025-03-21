@@ -536,7 +536,7 @@ class Deblurring2D(H_functions):
         return temp.reshape(vec.shape[0], -1)
 
     def singulars(self):
-        return self._singulars.repeat(1, 3).reshape(-1)
+        return self._singulars.repeat(1, self.channels).reshape(-1)
 
     def add_zeros(self, vec):
         return vec.clone().reshape(vec.shape[0], -1)

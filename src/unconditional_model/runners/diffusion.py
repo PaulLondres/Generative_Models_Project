@@ -129,6 +129,7 @@ class Diffusion(object):
             else:
                 ckpt = os.path.join(self.args.exp, "logs/imagenet/256x256_diffusion_uncond.pt") if self.args.pt_weights is None else self.args.pt_weights
                 if not os.path.exists(ckpt):
+                    print(f"Checkpoint path {ckpt} not found, downloading openai weights")
                     download('https://openaipublic.blob.core.windows.net/diffusion/jul-2021/256x256_diffusion_uncond.pt', ckpt)
                 
             

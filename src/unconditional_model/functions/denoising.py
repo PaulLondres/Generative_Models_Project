@@ -43,7 +43,7 @@ def efficient_generalized_steps(x, seq, model, b, H_funcs, y_0, sigma_0, etaB, e
         xs = [x]
 
         #iterate over the timesteps
-        for i, j in tqdm(zip(reversed(seq), reversed(seq_next))):
+        for i, j in zip(reversed(seq), reversed(seq_next)):
             t = (torch.ones(n) * i).to(x.device)
             next_t = (torch.ones(n) * j).to(x.device)
             at = compute_alpha(b, t.long())
